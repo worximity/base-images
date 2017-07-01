@@ -762,7 +762,7 @@ generate = (stack_version, distro_version, hw, variant) ->
 		r.variant_slug is variant.slug and r.distro_slug is distro_version.distro_slug and r.stack_slug is stack_version.stack_slug
 
 	if hw.arch_slug
-		hwArchs = _.find(data.arch, slug: device.arch_slug).can_run
+		hwArchs = _.find(data.arch, slug: hw.arch_slug).can_run
 	else
 		hwArchs = [ hw.slug ]
 
@@ -819,17 +819,9 @@ generate = (stack_version, distro_version, hw, variant) ->
 
 for stack_version in data.stack_version
 	for distro_version in data.distro_version
-		for device in data.device
+		for hw in data.arch.concat(data.device)
 			for variant in data.variant
-				obj = generate(stack_version, distro_version, device, variant)
-				if obj
-					console.log(JSON.stringify(obj))
-
-for stack_version in data.stack_version
-	for distro_version in data.distro_version
-		for arch in data.arch
-			for variant in data.variant
-				obj = generate(stack_version, distro_version, arch, variant)
+				obj = generate(stack_version, distro_version, hw, variant)
 				if obj
 					console.log(JSON.stringify(obj))
 
