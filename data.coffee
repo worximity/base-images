@@ -757,26 +757,79 @@ data = {
 	]
 }
 
-for stack in data.stack_version
-	for distro in data.distro_version
+generate = (stack_version, distro_version, hw, variant) ->
+	hasVariant = data.variant_is_compatible_with_distro_and_stack.some (r) ->
+		r.variant_slug is variant.slug and r.distro_slug is distro_version.distro_slug and r.stack_slug is stack_version.stack_slug
+
+	if hw.arch_slug
+		hwArchs = _.find(data.arch, slug: device.arch_slug).can_run
+	else
+		hwArchs = [ hw.slug ]
+
+	distroVersionArchs = _.filter(data.distro_version_supports_arch, distro_version_id: distro_version.id).map(({arch_slug}) -> arch_slug)
+	distro_arch = _.intersection(hwArchs, distroVersionArchs).pop()
+
+	stackVersionArchs = _.filter(data.stack_version_supports_arch, stack_version_id: stack_version.id).map(({arch_slug}) -> arch_slug)
+	stack_arch = _.intersection(hwArchs, stackVersionArchs).pop()
+
+	if _.filter(data.distro_supports_hw, distro_slug: distro_version.distro_slug).length isnt 0 and not _.find(data.distro_supports_hw, { distro_slug: distro_version.distro_slug, hw_id: hw.slug })
+		return false
+
+	if not (hasVariant and distro_arch and stack_arch)
+		return false
+
+	components = _.filter(data.component, stack_version_id: stack_version.id)
+
+	components = components.map( (component) ->
+		ret = _.cloneDeep(component)
+		ret.blob = _.find(data.blob, { component_id: component.id, libc_id: distro_version.libc_id, arch_slug: stack_arch })
+		return [ component.slug, ret ]
+	)
+
+	components = _.fromPairs(components)
+
+	obj = _.cloneDeep({hw, stack_version, distro_version, variant })
+	obj.stack_version.arch_slug = stack_arch
+	obj.distro_version.arch_slug = distro_arch
+	obj.stack_version.components = components
+
+	expand = (obj) ->
+		foo = _.toPairs(obj)
+		.filter(([key]) -> key isnt 'id')
+		.map ([key, value]) ->
+			if key.endsWith("_id")
+				key = key.slice(0, -3)
+				value =  _.find(data[key], id: value)
+			else if key.endsWith("_slug")
+				key = key.slice(0, -5)
+				value = _.find(data[key], slug: value)
+
+			if _.isObject(value) and not _.isArray(value)
+				value = expand(value)
+
+			if key in ["distro_version", "stack_version"]
+				key = key.slice(0, -8)
+				value = _.merge(value[key], value)
+				delete value[key]
+
+			[ key, value ]
+		return _.fromPairs(foo)
+
+	return expand(obj)
+
+for stack_version in data.stack_version
+	for distro_version in data.distro_version
 		for device in data.device
 			for variant in data.variant
-				hasVariant = data.variant_is_compatible_with_distro_and_stack.some (r) ->
-					r.variant_id is variant.slug and r.distro_id is distro.distro_id and r.stack_id is stack.stack_id
+				obj = generate(stack_version, distro_version, device, variant)
+				if obj
+					console.log(JSON.stringify(obj))
 
-				deviceArchs = _.find(data.arch, slug: device.arch_id).can_run
+for stack_version in data.stack_version
+	for distro_version in data.distro_version
+		for arch in data.arch
+			for variant in data.variant
+				obj = generate(stack_version, distro_version, arch, variant)
+				if obj
+					console.log(JSON.stringify(obj))
 
-				distroVersionArchs = _.filter(data.distro_version_supports_arch, distro_version_id: distro.id).map(({arch_id}) -> arch_id)
-				distro_arch = _.intersection(deviceArchs, distroVersionArchs).pop()
-
-				stackVersionArchs = _.filter(data.stack_version_supports_arch, stack_version_id: stack.id).map(({arch_id}) -> arch_id)
-				stack_arch = _.intersection(deviceArchs, stackVersionArchs).pop()
-
-				if _.filter(data.distro_supports_device, distro_id: distro.distro_id).length isnt 0 and not _.find(data.distro_supports_device, { distro_id: distro.distro_id, device_id: device.slug })
-					continue
-
-				if not (hasVariant and distro_arch and stack_arch)
-					continue
-				
-				obj = {device, stack, distro, stack_arch, distro_arch, variant }
-				console.log(JSON.stringify(obj))
